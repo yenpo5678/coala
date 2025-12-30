@@ -8,6 +8,20 @@ from coalib.results.RESULT_SEVERITY import RESULT_SEVERITY
 from coalib.results.SourceRange import SourceRange
 
 
+# --- [REFACTORING] New Class extracted to solve Data Clump ---
+class SourceLocation:
+    """
+    Refactoring: Encapsulates file and position information to avoid Data Clumps.
+    """
+    def __init__(self, file, line=None, column=None, end_line=None, end_column=None):
+        self.file = file
+        self.line = line
+        self.column = column
+        self.end_line = end_line
+        self.end_column = end_column
+# -------------------------------------------------------------
+
+
 # Omit additional info, debug message and diffs for brevity
 @generate_repr(('id', hex),
                'origin',
@@ -244,6 +258,32 @@ class Result:
                    message_arguments=message_arguments,
                    actions=actions,
                    alternate_diffs=alternate_diffs)
+
+    # --- [REFACTORING] New Method to support Parameter Object ---
+    @classmethod
+    def from_location(cls,
+                      origin,
+                      message: str,
+                      location: SourceLocation,  # Refactoring point: Passing object instead of scalars
+                      severity: int = RESULT_SEVERITY.NORMAL,
+                      confidence: int = 100,
+                      **kwargs):
+        """
+        New factory method that accepts a SourceLocation object.
+        This fixes the Data Clump Code Smell found in from_values.
+        """
+        # Reuse existing logic but unpack from our new clean object
+        return cls.from_values(origin,
+                               message,
+                               file=location.file,
+                               line=location.line,
+                               column=location.column,
+                               end_line=location.end_line,
+                               end_column=location.end_column,
+                               severity=severity,
+                               confidence=confidence,
+                               **kwargs)
+    # ------------------------------------------------------------
 
     def to_string_dict(self):
         """

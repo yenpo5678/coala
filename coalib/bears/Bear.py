@@ -434,52 +434,68 @@ class Bear(Printer, LogPrinterMixin, metaclass=bearclass):
         else:
             return self.run(*args, **kwargs)
 
+    # --- [Refactored] execute 方法 ---
     def execute(self, *args, debug=False, **kwargs):
         name = self.name
         try:
             self.debug(f'Running bear {name}...')
 
-            # If `dependency_results` kwargs is defined but there are no
-            # dependency results (usually in Bear that has no dependency)
-            # delete the `dependency_results` kwargs, since most Bears don't
-            # define `dependency_results` kwargs in its `run()` function.
             if ('dependency_results' in kwargs and
                     kwargs['dependency_results'] is None and
                     not self.BEAR_DEPS):
                 del kwargs['dependency_results']
 
-            # If it's already a list it won't change it
             result = self.run_bear_from_section(args, kwargs)
             return [] if result is None else list(result)
+
         except (Exception, SystemExit) as exc:
-            if debug and not isinstance(exc, SystemExit):
-                raise
+            # 重構點 1：將複雜的錯誤處理委派給專屬方法，符合單一職責原則 (SRP)
+            self._handle_execution_error(exc, args, debug)
+            # 重構點 2：明確回傳空串列 []，修復了原版回傳 None 的不一致問題
+            return []
 
-            if isinstance(exc, ZeroOffsetError):
-                self.err(
-                    f'Bear {name} violated one-based offset convention.',
-                    str(exc))
+    # --- [New Method] 專門負責處理錯誤邏輯 ---
+    def _handle_execution_error(self, exc, args, debug):
+        """
+        Refactoring: Extracted error handling logic to satisfy SRP.
+        Handles exceptions raised during bear execution.
+        """
+        name = self.name
+        
+        # 如果是 debug 模式且不是 SystemExit，則直接拋出，方便開發者除錯
+        if debug and not isinstance(exc, SystemExit):
+            raise exc
 
-            if (self.kind() == BEAR_KIND.LOCAL
-                    and ('log_level' not in self.section
-                         or self.section['log_level'].value != 'DEBUG')):
-                self.err(f'Bear {name} failed to run on file {args[0]}. '
-                         'Take a look '
-                         'at debug messages (`-V`) for further '
-                         'information.')
-            elif ('log_level' not in self.section
-                    or self.section['log_level'].value != 'DEBUG'):
-                self.err(f'Bear {name} failed to run. Take a look '
-                         'at debug messages (`-V`) for further '
-                         'information.')
+        # 處理特殊例外 (ZeroOffsetError)
+        if isinstance(exc, ZeroOffsetError):
+            self.err(
+                f'Bear {name} violated one-based offset convention.',
+                str(exc))
+            return
 
-            self.debug(
-                f'The bear {name} raised an exception. If you are the author '
-                'of this bear, please make sure to catch all exceptions. If '
-                'not and this error annoys you, you might want to get in '
-                'contact with the author of this bear.\n\nTraceback '
-                f'information is provided below:\n\n{traceback.format_exc()}'
-                '\n')
+        # 處理一般執行錯誤
+        # 根據 Log Level 決定顯示 Error 還是 Debug 訊息
+        if (self.kind() == BEAR_KIND.LOCAL
+                and ('log_level' not in self.section
+                        or self.section['log_level'].value != 'DEBUG')):
+            self.err(f'Bear {name} failed to run on file {args[0]}. '
+                        'Take a look '
+                        'at debug messages (`-V`) for further '
+                        'information.')
+        elif ('log_level' not in self.section
+                or self.section['log_level'].value != 'DEBUG'):
+            self.err(f'Bear {name} failed to run. Take a look '
+                        'at debug messages (`-V`) for further '
+                        'information.')
+
+        # 總是記錄詳細的 traceback 供進階除錯
+        self.debug(
+            f'The bear {name} raised an exception. If you are the author '
+            'of this bear, please make sure to catch all exceptions. If '
+            'not and this error annoys you, you might want to get in '
+            'contact with the author of this bear.\n\nTraceback '
+            f'information is provided below:\n\n{traceback.format_exc()}'
+            '\n')
 
     @staticmethod
     def kind():
